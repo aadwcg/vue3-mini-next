@@ -1,6 +1,19 @@
 var Vue = (function (exports) {
     'use strict';
 
+    /**
+     * 判断是否为一个数组
+     */
+    var isArray = Array.isArray;
+    var isObject = function (val) { return val !== null && typeof val === 'object'; };
+    /**
+     * 对比两个数据是否相同
+     * @param value
+     * @param oldValue
+     * @returns
+     */
+    var hasChanged = function (value, oldValue) { return !Object.is(value, oldValue); };
+
     /******************************************************************************
     Copyright (c) Microsoft Corporation.
 
@@ -61,11 +74,6 @@ var Vue = (function (exports) {
         var e = new Error(message);
         return e.name = "SuppressedError", e.error = error, e.suppressed = suppressed, e;
     };
-
-    /**
-     * 判断是否为一个数组
-     */
-    var isArray = Array.isArray;
 
     var createDep = function (effects) {
         var dep = new Set();
@@ -196,9 +204,78 @@ var Vue = (function (exports) {
         proxyMap.set(target, proxy);
         return proxy;
     }
+    var toReactive = function (value) {
+        return isObject(value) ? reactive(value) : value;
+    };
+
+    function ref(value) {
+        return createRef(value, false);
+    }
+    function createRef(rawValue, shallow) {
+        if (isRef(rawValue)) {
+            return rawValue;
+        }
+        return new RefImpl(rawValue, shallow);
+    }
+    var RefImpl = /** @class */ (function () {
+        function RefImpl(value, __v_isShallow) {
+            this.__v_isShallow = __v_isShallow;
+            this.dep = undefined;
+            this.__v_isRef = true;
+            // 简单数据
+            this._rawValue = value;
+            // 如果 __v_isShallow 为 true，则 value 不会被转化为 reactive 数据，即如果当前 value 为复杂数据类型，则会失去响应性。对应官方文档 shallowRef ：https://cn.vuejs.org/api/reactivity-advanced.html#shallowref
+            this._value = __v_isShallow ? value : toReactive(value);
+        }
+        Object.defineProperty(RefImpl.prototype, "value", {
+            get: function () {
+                trackRefValue(this);
+                return this._value;
+            },
+            set: function (newVal) {
+                if (hasChanged(newVal, this._rawValue)) {
+                    // 更新原始数据
+                    this._rawValue = newVal;
+                    // 更新 .value 的值
+                    this._value = toReactive(newVal);
+                    // 触发依赖
+                    triggerRefVal(this);
+                }
+            },
+            enumerable: false,
+            configurable: true
+        });
+        return RefImpl;
+    }());
+    /**
+     *
+     * @param ref 收集依赖
+     */
+    function trackRefValue(ref) {
+        if (activeEffect) {
+            trackEffects(ref.dep || (ref.dep = createDep()));
+        }
+    }
+    /**
+     * 触发依赖
+     */
+    function triggerRefVal(ref) {
+        if (ref.dep) {
+            triggerEffects(ref.dep);
+        }
+    }
+    /**
+     *
+     * @param r 是否为ref
+     * @returns
+     */
+    function isRef(r) {
+        return !!(r && r.__v_isRef === true);
+    }
 
     exports.effect = effect;
     exports.reactive = reactive;
+    exports.ref = ref;
 
     return exports;
 

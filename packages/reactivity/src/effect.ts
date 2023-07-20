@@ -45,7 +45,7 @@ export function track(target:object,key:unknown){
 /**
  * 利用dep依次跟踪指定key的所有的effect
  */
-export function trackEffects(dep:Dep){
+export function trackEffects(dep:Dep){    
     dep.add(activeEffect!)
 }
 /**
